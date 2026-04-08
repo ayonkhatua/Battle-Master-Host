@@ -32,7 +32,6 @@ class _ManageMatchesViewState extends State<ManageMatchesView> {
   final _editPrizePoolController = TextEditingController();
   final _editPerKillController = TextEditingController();
 
-  // 🌟 NAYE VARIABLES: Dropdown aur Booked Matches ke liye 🌟
   List<Map<String, dynamic>> _myClaimedMatches = [];
   int? _selectedMatchId;
 
@@ -44,7 +43,7 @@ class _ManageMatchesViewState extends State<ManageMatchesView> {
   @override
   void initState() {
     super.initState();
-    _fetchMyMatches(); // Screen khulte hi host ke matches load honge
+    _fetchMyMatches(); 
   }
 
   @override
@@ -56,7 +55,6 @@ class _ManageMatchesViewState extends State<ManageMatchesView> {
     super.dispose();
   }
 
-  // 🌟 NAYA FUNCTION: Sirf wahi matches lao jo IS host ne claim kiye hain 🌟
   Future<void> _fetchMyMatches() async {
     final userId = Supabase.instance.client.auth.currentUser?.id;
     if (userId == null) return;
@@ -67,11 +65,16 @@ class _ManageMatchesViewState extends State<ManageMatchesView> {
           .from('tournaments')
           .select('id, title, time')
           .eq('host_id', userId)
-          .neq('status', 'completed') // Jo khatam ho gaye wo mat dikhao
+          .neq('status', 'completed')
           .order('time', ascending: true);
 
       setState(() {
         _myClaimedMatches = List<Map<String, dynamic>>.from(data);
+        // 🌟 BUG FIX: Agar match complete ho gaya aur list se hat gaya, toh usko clear karo
+        if (_selectedMatchId != null && !_myClaimedMatches.any((m) => m['id'].toString() == _selectedMatchId.toString())) {
+          _selectedMatchId = null;
+          _tournament = null;
+        }
       });
     } catch (e) {
       setState(() => _message = "❌ Error loading your matches: $e");
@@ -80,7 +83,6 @@ class _ManageMatchesViewState extends State<ManageMatchesView> {
     }
   }
 
-  // 🌟 UPDATE: Ab id direct Dropdown se aayegi 🌟
   Future<void> _loadTournament(int tid) async {
     setState(() {
       _isLoading = true;
@@ -128,18 +130,22 @@ class _ManageMatchesViewState extends State<ManageMatchesView> {
     });
 
     try {
+      // 🌟 BUG FIX: String ko Integer mein convert kar rahe hain taaki Supabase error na de
+      int updatedPrize = int.tryParse(_editPrizePoolController.text.trim()) ?? 0;
+      int updatedKill = int.tryParse(_editPerKillController.text.trim()) ?? 0;
+
       await Supabase.instance.client
           .from('tournaments')
           .update({
-            'prize_pool': _editPrizePoolController.text.trim(),
-            'per_kill': _editPerKillController.text.trim(),
+            'prize_pool': updatedPrize,
+            'per_kill': updatedKill,
           })
           .eq('id', _tournament!['id']);
 
       setState(() {
         _message = "✅ Economy updated successfully! No losses today.";
-        _tournament!['prize_pool'] = _editPrizePoolController.text.trim();
-        _tournament!['per_kill'] = _editPerKillController.text.trim();
+        _tournament!['prize_pool'] = updatedPrize;
+        _tournament!['per_kill'] = updatedKill;
       });
     } catch (e) {
       setState(() => _message = "❌ Error updating economy: ${e.toString()}");
@@ -206,21 +212,22 @@ class _ManageMatchesViewState extends State<ManageMatchesView> {
 
       final resultsToUpsert = consolidatedResults.values.toList();
 
-      await Supabase.instance.client
-          .from('game_results')
-          .upsert(
-            resultsToUpsert,
-            onConflict: 'tournament_id, user_id',
-          );
+      if (resultsToUpsert.isNotEmpty) {
+        await Supabase.instance.client
+            .from('game_results')
+            .upsert(
+              resultsToUpsert,
+              onConflict: 'tournament_id, user_id',
+            );
+      }
 
       final winners = _participants
           .where((p) => p.isWinner)
           .map((p) => p.ign)
           .toSet()
           .toList();
-      final winnerNames = winners.join(", ");
+      final winnerNames = winners.isNotEmpty ? winners.join(", ") : "No Winner";
 
-      // Match ko completed mark karna
       await Supabase.instance.client
           .from('tournaments')
           .update({
@@ -234,11 +241,11 @@ class _ManageMatchesViewState extends State<ManageMatchesView> {
 
       setState(() {
         _message = "🏆 Results saved! Match Completed & Sent for Verification.";
-        _tournament = null; // Form clear kar do
+        _tournament = null; 
         _selectedMatchId = null;
       });
       
-      _fetchMyMatches(); // List refresh karo (Completed match hat jayega)
+      _fetchMyMatches(); 
       
     } on PostgrestException catch (e) {
       setState(() => _message = "❌ Database Error: ${e.message}");
@@ -326,21 +333,23 @@ class _ManageMatchesViewState extends State<ManageMatchesView> {
                     const Text('Select a Match to Manage', style: TextStyle(color: Colors.indigoAccent, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 12),
                     DropdownButtonFormField<int>(
-                      initialValue: _selectedMatchId,
+                      value: _selectedMatchId,
                       hint: const Text('Tap to select your match', style: TextStyle(color: Colors.grey)),
                       decoration: _buildInputDecoration('', Icons.sports_esports).copyWith(labelText: null),
                       dropdownColor: const Color(0xFF020617),
                       style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                      items: _myClaimedMatches.map((m) {
+                      // 🌟 BUG FIX: List khali hone par Dropdown null/disabled ho jayega error nahi dega 🌟
+                      items: _myClaimedMatches.isEmpty ? null : _myClaimedMatches.map((m) {
+                        int safeId = int.tryParse(m['id'].toString()) ?? 0;
                         return DropdownMenuItem<int>(
-                          value: m['id'] as int,
-                          child: Text('${m['title']} (#${m['id']})'),
+                          value: safeId,
+                          child: Text('${m['title']} (#$safeId)'),
                         );
                       }).toList(),
                       onChanged: (val) {
                         if (val != null) {
                           setState(() => _selectedMatchId = val);
-                          _loadTournament(val); // Select karte hi data load
+                          _loadTournament(val); 
                         }
                       },
                     ),
@@ -371,7 +380,6 @@ class _ManageMatchesViewState extends State<ManageMatchesView> {
                   ),
                 ),
 
-              // --- Tournament Content Section ---
               if (_tournament != null && !_isLoading) ...[
                 Text(
                   '${_tournament!['title']}',
@@ -392,7 +400,6 @@ class _ManageMatchesViewState extends State<ManageMatchesView> {
                 _buildParticipantsTable(),
                 const SizedBox(height: 24),
                 
-                // --- Save Results Button ---
                 Container(
                   height: 56,
                   decoration: BoxDecoration(

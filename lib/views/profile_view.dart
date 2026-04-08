@@ -43,11 +43,13 @@ class _ProfileViewState extends State<ProfileView> {
           .eq('id', user.id)
           .single();
 
-      setState(() {
-        _availableBalance = (data['available_balance'] ?? 0).toDouble();
-        _pendingBalance = (data['pending_balance'] ?? 0).toDouble();
-        _hostStatus = data['status'] ?? 'waiting';
-      });
+      if (mounted) {
+        setState(() {
+          _availableBalance = (data['available_balance'] ?? 0).toDouble();
+          _pendingBalance = (data['pending_balance'] ?? 0).toDouble();
+          _hostStatus = data['status'] ?? 'waiting';
+        });
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -227,7 +229,7 @@ class _ProfileViewState extends State<ProfileView> {
                           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Insufficient balance for payout!')));
                           return;
                         }
-                        // Payout Request Logic yahan aayega
+                        // Future Payout Request Logic yahan aayega
                         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Payout requested! It will be processed by Sunday.')));
                       },
                       style: ElevatedButton.styleFrom(
@@ -259,14 +261,13 @@ class _ProfileViewState extends State<ProfileView> {
               ),
               child: Column(
                 children: [
+                  // 🌟 NAVIGATION UNCOMMENTED HERE 🌟
                   _buildMenuTile(Icons.history, 'Transaction History', 'View past match earnings', () {
-                    // Navigator.push(context, MaterialPageRoute(builder: (_) => const TransactionHistoryView()));
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Coming Soon!')));
+                    Navigator.push(context, MaterialPageRoute(builder: (_) => const TransactionHistoryView()));
                   }),
                   _buildDivider(),
                   _buildMenuTile(Icons.qr_code_scanner, 'Manage UPI Details', 'For receiving payouts', () {
-                    // Navigator.push(context, MaterialPageRoute(builder: (_) => const ManageUpiView()));
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Coming Soon!')));
+                    Navigator.push(context, MaterialPageRoute(builder: (_) => const ManageUpiView()));
                   }),
                 ],
               ),
