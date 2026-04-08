@@ -26,13 +26,15 @@ class ManageMatchesView extends StatefulWidget {
 }
 
 class _ManageMatchesViewState extends State<ManageMatchesView> {
-  final _searchController = TextEditingController();
   final _roomIdController = TextEditingController();
   final _roomPassController = TextEditingController();
   
-  // 🌟 NAYE CONTROLLERS ECONOMY EDIT KARNE KE LIYE 🌟
   final _editPrizePoolController = TextEditingController();
   final _editPerKillController = TextEditingController();
+
+  // 🌟 NAYE VARIABLES: Dropdown aur Booked Matches ke liye 🌟
+  List<Map<String, dynamic>> _myClaimedMatches = [];
+  int? _selectedMatchId;
 
   Map<String, dynamic>? _tournament;
   List<ParticipantState> _participants = [];
@@ -40,8 +42,13 @@ class _ManageMatchesViewState extends State<ManageMatchesView> {
   String _message = "";
 
   @override
+  void initState() {
+    super.initState();
+    _fetchMyMatches(); // Screen khulte hi host ke matches load honge
+  }
+
+  @override
   void dispose() {
-    _searchController.dispose();
     _roomIdController.dispose();
     _roomPassController.dispose();
     _editPrizePoolController.dispose();
@@ -49,13 +56,32 @@ class _ManageMatchesViewState extends State<ManageMatchesView> {
     super.dispose();
   }
 
-  Future<void> _loadTournament() async {
-    final tid = int.tryParse(_searchController.text);
-    if (tid == null) {
-      setState(() => _message = "⚠️ Please enter a valid Tournament ID");
-      return;
-    }
+  // 🌟 NAYA FUNCTION: Sirf wahi matches lao jo IS host ne claim kiye hain 🌟
+  Future<void> _fetchMyMatches() async {
+    final userId = Supabase.instance.client.auth.currentUser?.id;
+    if (userId == null) return;
 
+    setState(() => _isLoading = true);
+    try {
+      final data = await Supabase.instance.client
+          .from('tournaments')
+          .select('id, title, time')
+          .eq('host_id', userId)
+          .neq('status', 'completed') // Jo khatam ho gaye wo mat dikhao
+          .order('time', ascending: true);
+
+      setState(() {
+        _myClaimedMatches = List<Map<String, dynamic>>.from(data);
+      });
+    } catch (e) {
+      setState(() => _message = "❌ Error loading your matches: $e");
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  // 🌟 UPDATE: Ab id direct Dropdown se aayegi 🌟
+  Future<void> _loadTournament(int tid) async {
     setState(() {
       _isLoading = true;
       _message = "";
@@ -81,11 +107,9 @@ class _ManageMatchesViewState extends State<ManageMatchesView> {
             .map((p) => ParticipantState(p))
             .toList();
             
-        // Load Room Details
         _roomIdController.text = _tournament!['room_id'] ?? '';
         _roomPassController.text = _tournament!['room_password'] ?? '';
         
-        // 🌟 LOAD ECONOMY DETAILS 🌟
         _editPrizePoolController.text = _tournament!['prize_pool']?.toString() ?? '';
         _editPerKillController.text = _tournament!['per_kill']?.toString() ?? '';
       });
@@ -96,7 +120,6 @@ class _ManageMatchesViewState extends State<ManageMatchesView> {
     }
   }
 
-  // 🌟 NAYA FUNCTION: TOURNAMENT ECONOMY UPDATE KARNE KE LIYE 🌟
   Future<void> _updateTournamentEconomy() async {
     if (_tournament == null) return;
     setState(() {
@@ -115,7 +138,6 @@ class _ManageMatchesViewState extends State<ManageMatchesView> {
 
       setState(() {
         _message = "✅ Economy updated successfully! No losses today.";
-        // Local state update so UI reflects the new numbers
         _tournament!['prize_pool'] = _editPrizePoolController.text.trim();
         _tournament!['per_kill'] = _editPerKillController.text.trim();
       });
@@ -142,7 +164,7 @@ class _ManageMatchesViewState extends State<ManageMatchesView> {
           })
           .eq('id', _tournament!['id']);
 
-      setState(() => _message = "✅ Room details updated successfully!");
+      setState(() => _message = "✅ Room credentials sent to players!");
     } catch (e) {
       setState(() => _message = "❌ Error updating room: ${e.toString()}");
     } finally {
@@ -198,6 +220,7 @@ class _ManageMatchesViewState extends State<ManageMatchesView> {
           .toList();
       final winnerNames = winners.join(", ");
 
+      // Match ko completed mark karna
       await Supabase.instance.client
           .from('tournaments')
           .update({
@@ -209,15 +232,18 @@ class _ManageMatchesViewState extends State<ManageMatchesView> {
 
       await _updateStatistics(tid, consolidatedResults);
 
-      setState(
-        () => _message = "🏆 Results saved! Match Completed.",
-      );
+      setState(() {
+        _message = "🏆 Results saved! Match Completed & Sent for Verification.";
+        _tournament = null; // Form clear kar do
+        _selectedMatchId = null;
+      });
+      
+      _fetchMyMatches(); // List refresh karo (Completed match hat jayega)
+      
     } on PostgrestException catch (e) {
       setState(() => _message = "❌ Database Error: ${e.message}");
     } catch (e) {
-      setState(
-        () => _message = "❌ An unexpected error occurred: ${e.toString()}",
-      );
+      setState(() => _message = "❌ An unexpected error occurred: ${e.toString()}");
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -245,14 +271,13 @@ class _ManageMatchesViewState extends State<ManageMatchesView> {
     }
   }
 
-  // Helper for Input Decoration
   InputDecoration _buildInputDecoration(String label, IconData icon) {
     return InputDecoration(
       labelText: label,
       labelStyle: const TextStyle(color: Colors.grey),
       prefixIcon: Icon(icon, color: Colors.grey),
       filled: true,
-      fillColor: const Color(0xFF020617), // Darker inner fill
+      fillColor: const Color(0xFF020617),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
         borderSide: BorderSide.none,
@@ -271,17 +296,23 @@ class _ManageMatchesViewState extends State<ManageMatchesView> {
       child: Scaffold(
         backgroundColor: Colors.transparent,
         appBar: AppBar(
-          title: const Text("MANAGE MATCH", style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1.2)),
+          title: const Text("MY BOOKED MATCHES", style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1.2)),
           backgroundColor: Colors.transparent,
           elevation: 0,
           centerTitle: true,
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.refresh, color: Colors.indigoAccent),
+              onPressed: _fetchMyMatches,
+            )
+          ],
         ),
         body: SingleChildScrollView(
           padding: const EdgeInsets.all(24.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // --- Search Section ---
+              // 🌟 NAYA DROPDOWN SELECTION UI 🌟
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
@@ -289,34 +320,38 @@ class _ManageMatchesViewState extends State<ManageMatchesView> {
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(color: Colors.indigoAccent.withOpacity(0.3)),
                 ),
-                child: Row(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _searchController,
-                        style: const TextStyle(color: Colors.white),
-                        decoration: _buildInputDecoration('Tournament ID', Icons.numbers),
-                        keyboardType: TextInputType.number,
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    ElevatedButton(
-                      onPressed: _isLoading ? null : _loadTournament,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.indigoAccent,
-                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                      child: const Icon(Icons.search, color: Colors.white),
+                    const Text('Select a Match to Manage', style: TextStyle(color: Colors.indigoAccent, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<int>(
+                      initialValue: _selectedMatchId,
+                      hint: const Text('Tap to select your match', style: TextStyle(color: Colors.grey)),
+                      decoration: _buildInputDecoration('', Icons.sports_esports).copyWith(labelText: null),
+                      dropdownColor: const Color(0xFF020617),
+                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                      items: _myClaimedMatches.map((m) {
+                        return DropdownMenuItem<int>(
+                          value: m['id'] as int,
+                          child: Text('${m['title']} (#${m['id']})'),
+                        );
+                      }).toList(),
+                      onChanged: (val) {
+                        if (val != null) {
+                          setState(() => _selectedMatchId = val);
+                          _loadTournament(val); // Select karte hi data load
+                        }
+                      },
                     ),
                   ],
                 ),
               ),
               const SizedBox(height: 20),
 
-              // --- Message & Loading state ---
               if (_isLoading)
                 const Center(child: Padding(padding: EdgeInsets.all(8.0), child: CircularProgressIndicator(color: Colors.indigoAccent))),
+              
               if (_message.isNotEmpty)
                 Container(
                   width: double.infinity,
@@ -339,7 +374,7 @@ class _ManageMatchesViewState extends State<ManageMatchesView> {
               // --- Tournament Content Section ---
               if (_tournament != null && !_isLoading) ...[
                 Text(
-                  '${_tournament!['title']} (#${_tournament!['id']})',
+                  '${_tournament!['title']}',
                   style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold),
                 ),
                 Text(
@@ -348,7 +383,6 @@ class _ManageMatchesViewState extends State<ManageMatchesView> {
                 ),
                 const SizedBox(height: 20),
                 
-                // 🌟 NAYA SECTION: EDIT ECONOMY 🌟
                 _buildEditEconomyBox(),
                 const SizedBox(height: 20),
                 
@@ -394,7 +428,6 @@ class _ManageMatchesViewState extends State<ManageMatchesView> {
     );
   }
 
-  // 🌟 WIDGET: ECONOMY EDIT BOX 🌟
   Widget _buildEditEconomyBox() {
     return Container(
       padding: const EdgeInsets.all(16.0),
@@ -406,11 +439,11 @@ class _ManageMatchesViewState extends State<ManageMatchesView> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
+          const Row(
             children: [
-              const Icon(Icons.account_balance_wallet, color: Colors.orangeAccent, size: 20),
-              const SizedBox(width: 8),
-              const Text(
+              Icon(Icons.account_balance_wallet, color: Colors.orangeAccent, size: 20),
+              SizedBox(width: 8),
+              Text(
                 'Adjust Economy (Prevent Loss)',
                 style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
               ),
@@ -456,7 +489,6 @@ class _ManageMatchesViewState extends State<ManageMatchesView> {
     );
   }
 
-  // WIDGET: ROOM DETAILS BOX
   Widget _buildRoomBox() {
     return Container(
       padding: const EdgeInsets.all(16.0),
@@ -509,7 +541,6 @@ class _ManageMatchesViewState extends State<ManageMatchesView> {
     );
   }
 
-  // WIDGET: PARTICIPANTS TABLE
   Widget _buildParticipantsTable() {
     return Container(
       width: double.infinity,

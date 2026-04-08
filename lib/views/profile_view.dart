@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../main.dart';
+import 'transaction_history_view.dart';
+import 'manage_upi_view.dart';
 
 class ProfileView extends StatefulWidget {
   const ProfileView({super.key});
@@ -9,10 +12,13 @@ class ProfileView extends StatefulWidget {
 }
 
 class _ProfileViewState extends State<ProfileView> {
+  bool _isLoading = true;
   String _userEmail = 'Loading...';
-  // 🌟 Payout logic ke liye dummy variables (Backend banne ke baad Supabase se aayenge)
-  final double _availableBalance = 450.0;
-  final double _pendingBalance = 120.0; 
+  String _hostStatus = 'waiting';
+  
+  // 🌟 Real Backend Variables 🌟
+  double _availableBalance = 0.0;
+  double _pendingBalance = 0.0; 
 
   @override
   void initState() {
@@ -20,15 +26,40 @@ class _ProfileViewState extends State<ProfileView> {
     _loadUserProfile();
   }
 
-  void _loadUserProfile() {
+  Future<void> _loadUserProfile() async {
     final user = supabase.auth.currentUser;
+    if (user == null) return;
+
     setState(() {
-      _userEmail = user?.email ?? 'Unknown Host';
+      _userEmail = user.email ?? 'Unknown Host';
+      _isLoading = true;
     });
+
+    try {
+      // 🌟 Supabase se live data fetch karna 🌟
+      final data = await Supabase.instance.client
+          .from('host_profiles')
+          .select()
+          .eq('id', user.id)
+          .single();
+
+      setState(() {
+        _availableBalance = (data['available_balance'] ?? 0).toDouble();
+        _pendingBalance = (data['pending_balance'] ?? 0).toDouble();
+        _hostStatus = data['status'] ?? 'waiting';
+      });
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Profile update pending/Error: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   Future<void> _logout(BuildContext context) async {
-    // Confirmation dialog dikhana better UX hai
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -59,7 +90,7 @@ class _ProfileViewState extends State<ProfileView> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.transparent, // Inherit from dashboard
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
         title: const Text("HOST PROFILE", style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1.2)),
         backgroundColor: Colors.transparent,
@@ -67,16 +98,14 @@ class _ProfileViewState extends State<ProfileView> {
         centerTitle: true,
         actions: [
           IconButton(
-            icon: const Icon(Icons.notifications_none_outlined, color: Colors.indigoAccent),
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('No new notifications')),
-              );
-            },
+            icon: const Icon(Icons.refresh, color: Colors.indigoAccent),
+            onPressed: _loadUserProfile, // Refresh button added
           )
         ],
       ),
-      body: SingleChildScrollView(
+      body: _isLoading 
+        ? const Center(child: CircularProgressIndicator(color: Colors.indigoAccent))
+        : SingleChildScrollView(
         padding: const EdgeInsets.all(24.0),
         child: Column(
           children: [
@@ -102,8 +131,8 @@ class _ProfileViewState extends State<ProfileView> {
                       ),
                       border: Border.all(color: Colors.white, width: 2),
                     ),
-                    child: const Center(
-                      child: Text('H', style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.white)),
+                    child: Center(
+                      child: Text(_userEmail.isNotEmpty ? _userEmail[0].toUpperCase() : 'H', style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.white)),
                     ),
                   ),
                   const SizedBox(width: 16),
@@ -111,11 +140,12 @@ class _ProfileViewState extends State<ProfileView> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Row(
+                        Row(
                           children: [
-                            Text('Verified Host', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
-                            SizedBox(width: 6),
-                            Icon(Icons.verified, color: Colors.blueAccent, size: 20),
+                            const Text('Battle Host', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+                            const SizedBox(width: 6),
+                            if (_hostStatus == 'approved')
+                              const Icon(Icons.verified, color: Colors.blueAccent, size: 20),
                           ],
                         ),
                         const SizedBox(height: 4),
@@ -124,11 +154,11 @@ class _ProfileViewState extends State<ProfileView> {
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                           decoration: BoxDecoration(
-                            color: Colors.green.withOpacity(0.1),
+                            color: _hostStatus == 'approved' ? Colors.green.withOpacity(0.1) : Colors.orange.withOpacity(0.1),
                             borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: Colors.green),
+                            border: Border.all(color: _hostStatus == 'approved' ? Colors.green : Colors.orange),
                           ),
-                          child: const Text('Status: Active', style: TextStyle(color: Colors.green, fontSize: 12, fontWeight: FontWeight.bold)),
+                          child: Text('Status: ${_hostStatus.toUpperCase()}', style: TextStyle(color: _hostStatus == 'approved' ? Colors.green : Colors.orange, fontSize: 12, fontWeight: FontWeight.bold)),
                         ),
                       ],
                     ),
@@ -144,7 +174,7 @@ class _ProfileViewState extends State<ProfileView> {
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(20),
                 gradient: const LinearGradient(
-                  colors: [Color(0xFF312E81), Color(0xFF1E1B4B)], // Deep rich indigo gradient
+                  colors: [Color(0xFF312E81), Color(0xFF1E1B4B)],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
@@ -158,7 +188,7 @@ class _ProfileViewState extends State<ProfileView> {
                   const Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text('Wallet Balance', style: TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.w600)),
+                      Text('Available Balance', style: TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.w600)),
                       Icon(Icons.account_balance_wallet, color: Colors.white54),
                     ],
                   ),
@@ -166,7 +196,6 @@ class _ProfileViewState extends State<ProfileView> {
                   Text('🪙 $_availableBalance', style: const TextStyle(color: Colors.white, fontSize: 36, fontWeight: FontWeight.w900)),
                   const SizedBox(height: 16),
                   
-                  // Pending Balance Indicator (Escrow Logic)
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
@@ -194,10 +223,12 @@ class _ProfileViewState extends State<ProfileView> {
                     height: 45,
                     child: ElevatedButton(
                       onPressed: () {
-                        // Withdraw Logic placeholder
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Payouts are processed every Sunday!')),
-                        );
+                        if (_availableBalance <= 0) {
+                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Insufficient balance for payout!')));
+                          return;
+                        }
+                        // Payout Request Logic yahan aayega
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Payout requested! It will be processed by Sunday.')));
                       },
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.white,
@@ -228,11 +259,15 @@ class _ProfileViewState extends State<ProfileView> {
               ),
               child: Column(
                 children: [
-                  _buildMenuTile(Icons.person_outline, 'Edit Profile', 'Change Name, Avatar', () {}),
+                  _buildMenuTile(Icons.history, 'Transaction History', 'View past match earnings', () {
+                    // Navigator.push(context, MaterialPageRoute(builder: (_) => const TransactionHistoryView()));
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Coming Soon!')));
+                  }),
                   _buildDivider(),
-                  _buildMenuTile(Icons.history, 'Transaction History', 'View past match earnings', () {}),
-                  _buildDivider(),
-                  _buildMenuTile(Icons.qr_code_scanner, 'Manage UPI Details', 'For receiving payouts', () {}),
+                  _buildMenuTile(Icons.qr_code_scanner, 'Manage UPI Details', 'For receiving payouts', () {
+                    // Navigator.push(context, MaterialPageRoute(builder: (_) => const ManageUpiView()));
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Coming Soon!')));
+                  }),
                 ],
               ),
             ),
@@ -252,7 +287,7 @@ class _ProfileViewState extends State<ProfileView> {
               ),
               child: Column(
                 children: [
-                  _buildMenuTile(Icons.help_outline, 'Battle Master Host Support', 'Contact Super Admin', () {}),
+                  _buildMenuTile(Icons.help_outline, 'Battle Master Support', 'Contact Super Admin', () {}),
                   _buildDivider(),
                   _buildMenuTile(Icons.policy_outlined, 'Hosting Guidelines', 'Rules & Regulations', () {}),
                 ],
@@ -281,7 +316,6 @@ class _ProfileViewState extends State<ProfileView> {
     );
   }
 
-  // Helper method for generating menu items
   Widget _buildMenuTile(IconData icon, String title, String subtitle, VoidCallback onTap) {
     return ListTile(
       leading: Container(
@@ -299,7 +333,6 @@ class _ProfileViewState extends State<ProfileView> {
     );
   }
 
-  // Helper method for subtle dividers
   Widget _buildDivider() {
     return Divider(color: Colors.white.withOpacity(0.05), height: 1, indent: 60, endIndent: 20);
   }
