@@ -18,7 +18,7 @@ class _ProfileViewState extends State<ProfileView> {
   
   // 🌟 Real Backend Variables 🌟
   double _availableBalance = 0.0;
-  double _pendingBalance = 0.0; 
+  // double _pendingBalance = 0.0; // 🌟 PENDING LOGIC COMMENTED 🌟
 
   @override
   void initState() {
@@ -46,7 +46,7 @@ class _ProfileViewState extends State<ProfileView> {
       if (mounted) {
         setState(() {
           _availableBalance = (data['available_balance'] ?? 0).toDouble();
-          _pendingBalance = (data['pending_balance'] ?? 0).toDouble();
+          // _pendingBalance = (data['pending_balance'] ?? 0).toDouble(); // 🌟 PENDING LOGIC COMMENTED 🌟
           _hostStatus = data['status'] ?? 'waiting';
         });
       }
@@ -198,6 +198,8 @@ class _ProfileViewState extends State<ProfileView> {
                   Text('🪙 $_availableBalance', style: const TextStyle(color: Colors.white, fontSize: 36, fontWeight: FontWeight.w900)),
                   const SizedBox(height: 16),
                   
+                  // 🌟 PENDING UI COMMENTED 🌟
+                  /*
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
@@ -219,6 +221,7 @@ class _ProfileViewState extends State<ProfileView> {
                     ),
                   ),
                   const SizedBox(height: 16),
+                  */
                   
                   SizedBox(
                     width: double.infinity,
@@ -261,7 +264,6 @@ class _ProfileViewState extends State<ProfileView> {
               ),
               child: Column(
                 children: [
-                  // 🌟 NAVIGATION UNCOMMENTED HERE 🌟
                   _buildMenuTile(Icons.history, 'Transaction History', 'View past match earnings', () {
                     Navigator.push(context, MaterialPageRoute(builder: (_) => const TransactionHistoryView()));
                   }),

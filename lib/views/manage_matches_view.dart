@@ -333,7 +333,7 @@ class _ManageMatchesViewState extends State<ManageMatchesView> {
                     const Text('Select a Match to Manage', style: TextStyle(color: Colors.indigoAccent, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 12),
                     DropdownButtonFormField<int>(
-                      value: _selectedMatchId,
+                      initialValue: _selectedMatchId,
                       hint: const Text('Tap to select your match', style: TextStyle(color: Colors.grey)),
                       decoration: _buildInputDecoration('', Icons.sports_esports).copyWith(labelText: null),
                       dropdownColor: const Color(0xFF020617),
